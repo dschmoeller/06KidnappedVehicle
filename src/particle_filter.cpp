@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 #include <tuple>
+#include <map>
+#include <list>
 
 #include "helper_functions.h"
 
@@ -208,20 +210,63 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     
     //DEBUG
     //cout << "The probability list comprises " << LM_obs_probs.size() << " single LM probs" << endl;
-    if (weight > 0){
+    /*if (weight > 0){
       cout << "Particle " << p.id << " has " << weight 
            << " chance that it would sense current obersvation" << endl;
-    }  
+    }*/  
   }
 }
 
 void ParticleFilter::resample() {
-  /**
-   * TODO: Resample particles with replacement with probability proportional 
-   *   to their weight. 
-   * NOTE: You may find std::discrete_distribution helpful here.
-   *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
-   */
+  // Fetch particle probabilities(weights) and normalize them 
+  // so they scale up to [0, 1000] 
+  int cnt = 0;
+  double sum_of_weights = 0; 
+  for (auto& p : particles){
+    weights[cnt] = p.weight;
+    sum_of_weights += p.weight;  
+    cnt++; 
+  }
+  double scale_factor = 1000.0 / sum_of_weights; 
+  std::list<int> scaled_weights;
+  for (auto w : weights){
+    double scaled_weight = scale_factor*w; 
+    scaled_weights.push_back(int(scaled_weight)); 
+    //DEBUG
+    //cout << "Scaled weight for particle is: " << scaled_weight << endl; 
+  }
+  //DEBUG
+  /*cout << "Scaled Weights (int) are: " << endl; 
+  for (auto e : scaled_weights){
+    cout << e << endl; 
+  } */
+  
+  // Use discrete distrubtion  
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::discrete_distribution<> d(scaled_weights.begin(), scaled_weights.end());
+  std::map<int, int> m;
+  for(int n=0; n<num_particles; ++n) {
+      ++m[d(gen)];
+  }
+  //DEBUG
+  for(auto p : m) {
+    std::cout << "Sample particle " << p.first << " " << p.second << " times\n";
+  }
+
+
+
+  // Define discrete distribution
+  /*std::random_device rd;
+  std::mt19937 gen(rd());
+  std::discrete_distribution<> d({40, 10, 10, 40});
+  std::map<int, int> m;
+  for(int n=0; n<10000; ++n) {
+      ++m[d(gen)];
+  }
+  for(auto p : m) {
+    std::cout << p.first << " generated " << p.second << " times\n";
+  }*/
 
    // Use discreet distribution
    // Use sample code from init function
