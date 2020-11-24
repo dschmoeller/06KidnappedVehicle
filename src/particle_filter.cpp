@@ -26,7 +26,7 @@ using std::endl;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Number of particles 
-  num_particles = 1;  
+  num_particles = 100;  
 
   // Define Gaussian distribution as particle generator
   std::default_random_engine gen;
@@ -112,10 +112,10 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
   }
 
   //Debugging
-  cout << "Observations after Assignment" << endl; 
+  /*cout << "Observations after Assignment" << endl; 
   for (auto obs : observations){
     cout << "Obervation (" << obs.x << ", " << obs.y <<") is assigned to LM " << obs.id << endl; 
-  }
+  }*/
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -169,11 +169,50 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     // (3) ASSOCIATE OBSERVATIONS WITH LANDMARKS 
     dataAssociation(LMs_in_range, obs_trans); 
 
-    // (4) CALCULATE PROBABILITIES 
+    // (4) CALCULATE PROBABILITIES
+    //  Calculate single landmark observation probability using mulitivariate gaussian
+    vector <double> LM_obs_probs; 
+    for (auto obs : obs_trans){
+      int assigned_LM_id = obs.id;
+      double LM_obs_prob = 1;  
+      // Could this observation be matched with a landmark
+      // If yes, calucalte probaility
+      // If not, probability is zero
+      if(assigned_LM_id != 0){
+        double mu_x = map_landmarks.landmark_list[assigned_LM_id - 1].x_f; 
+        double mu_y = map_landmarks.landmark_list[assigned_LM_id - 1].y_f;
+        LM_obs_prob = multiv_prob(std_landmark[0], std_landmark[1], obs.x, obs.y, mu_x, mu_y);
+        // Deal with numerical boundaries
+        if (LM_obs_prob == 0){
+          LM_obs_prob = 1e-10; 
+        }
+        //DEBUG
+        //cout << "LM " << assigned_LM_id << " has prob " << LM_obs_prob 
+        //     << " to be measured/observed by particle " << endl;      
+      }
+      else{
+        LM_obs_prob = 0; 
+        //DEBUG
+        //cout << "No landmark match at all --> 0 Probability" << endl; 
+      }
+      // Push single prob onto vector
+      LM_obs_probs.push_back(LM_obs_prob); 
+    }
+    // Calculate entire probability 
+    double weight = 1; 
+    for (auto prob : LM_obs_probs){
+      weight*=prob; 
+    }
+    // Update particle weight
+    p.weight = weight; 
+    
+    //DEBUG
+    //cout << "The probability list comprises " << LM_obs_probs.size() << " single LM probs" << endl;
+    if (weight > 0){
+      cout << "Particle " << p.id << " has " << weight 
+           << " chance that it would sense current obersvation" << endl;
+    }  
   }
-  
-
-
 }
 
 void ParticleFilter::resample() {
@@ -183,6 +222,11 @@ void ParticleFilter::resample() {
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
+
+   // Use discreet distribution
+   // Use sample code from init function
+   // Update particles in list
+   // Update weights in list
 
 }
 
