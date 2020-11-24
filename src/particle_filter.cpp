@@ -28,7 +28,7 @@ using std::endl;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Number of particles 
-  num_particles = 10000;  
+  num_particles = 60;  
 
   // Define Gaussian distribution as particle generator
   std::default_random_engine gen;
