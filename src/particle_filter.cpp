@@ -15,6 +15,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <tuple>
 
 #include "helper_functions.h"
 
@@ -25,7 +26,7 @@ using std::endl;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Number of particles 
-  num_particles = 3;  
+  num_particles = 1;  
 
   // Define Gaussian distribution as particle generator
   std::default_random_engine gen;
@@ -45,8 +46,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particles.push_back(p); 
     weights.push_back(p.weight); 
     // DEBUGGING
-    cout << "Create particle " << p.id << " with (" << p.x << " " << p.y 
-         << " " << p.theta << ") and weight " << p.weight << endl; 
+    /*cout << "Create particle " << p.id << " with (" << p.x << " " << p.y 
+         << " " << p.theta << ") and weight " << p.weight << endl; */
   }
   // Set initialization flag
   is_initialized = true;  
@@ -68,40 +69,110 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
      p.y = dist_y(gen); 
      p.theta = dist_theta(gen);
      // DEBUGGING
-     cout << "Move particle " << p.id << " to (" << p.x << " " << p.y 
-         << " " << p.theta << ")" << endl;  
+     /*cout << "Move particle " << p.id << " to (" << p.x << " " << p.y 
+         << " " << p.theta << ")" << endl; */ 
    }
 }
 
 void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
                                      vector<LandmarkObs>& observations) {
-  /**
-   * TODO: Find the predicted measurement that is closest to each 
-   *   observed measurement and assign the observed measurement to this 
-   *   particular landmark.
-   * NOTE: this method will NOT be called by the grading code. But you will 
-   *   probably find it useful to implement this method and use it as a helper 
-   *   during the updateWeights phase.
-   */
+  // Check each expected LM for the corresponding observation
+  // If there's more observations than LMs, observations are gonna be unassigned
+  // Later for the probability calculation, this means that the prob of this 
+  // measurement got to be 0
+  for (auto pred_LM : predicted){
+    // Calculate error (i.e. distance) against each observation
+    vector < std::tuple<double, LandmarkObs*> > dist_list; 
+    for (auto& obs : observations){
+      // Check if observation has not been assigned to a LM already
+      if (obs.id == 0) {
+        double eucl_dist = dist(pred_LM.x, pred_LM.y, obs.x, obs.y);
+        dist_list.push_back(std::make_tuple(eucl_dist, &obs)); 
+        // DEBUGGING
+        //cout << "Distance between LM " << pred_LM.id << " (" << pred_LM.x << " " << pred_LM.y 
+        //    << ") and obsevation (" << obs.x << " " << obs.y << ") is " << eucl_dist << endl;    
+      }     
+    }
+    // Sort the distance/error list in ascending order
+    // Lowest error element on the top of the vector
+    // Assign current LM id to lowest error observation
+    if (dist_list.size() != 0){
+      sort(dist_list.begin(), dist_list.end()); 
+      std::get<1>(dist_list[0])->id = pred_LM.id;
+      // DEBUGGING #############################################################
+      /*cout << "Sorted List entries:" << endl;  
+      for (auto e : dist_list){
+        cout << "Observation " << std::get<1>(e)->x << " " << std::get<1>(e)->y 
+             << " --> error to LM: " << std::get<0>(e) << endl;  
+      }
+      cout << "Closest observation to LM " << pred_LM.id << " is (" 
+           << std::get<1>(dist_list[0])->x << " " << std::get<1>(dist_list[0])->y << ")" << endl; */   
+      // DEBUGGING #############################################################
+    }
+  }
 
+  //Debugging
+  cout << "Observations after Assignment" << endl; 
+  for (auto obs : observations){
+    cout << "Obervation (" << obs.x << ", " << obs.y <<") is assigned to LM " << obs.id << endl; 
+  }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
                                    const vector<LandmarkObs> &observations, 
                                    const Map &map_landmarks) {
-  /**
-   * TODO: Update the weights of each particle using a mult-variate Gaussian 
-   *   distribution. You can read more about this distribution here: 
-   *   https://en.wikipedia.org/wiki/Multivariate_normal_distribution
-   * NOTE: The observations are given in the VEHICLE'S coordinate system. 
-   *   Your particles are located according to the MAP'S coordinate system. 
-   *   You will need to transform between the two systems. Keep in mind that
-   *   this transformation requires both rotation AND translation (but no scaling).
-   *   The following is a good resource for the theory:
-   *   https://www.willamette.edu/~gorr/classes/GeneralGraphics/Transforms/transforms2d.htm
-   *   and the following is a good resource for the actual equation to implement
-   *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
-   */
+  // Calculate observation probabilities for each particle
+  for (auto& p : particles){
+    // (1) TRANSFORM OBSERVATION FROM PARTICLE COS INTO WORLD COS
+    vector<LandmarkObs> obs_trans; 
+    for (auto obs : observations){
+      // Apply transormation matrix
+      double x_m = p.x + cos(p.theta)*obs.x - sin(p.theta)*obs.y; 
+      double y_m = p.y + sin(p.theta)*obs.x + cos(p.theta)*obs.y; 
+      // Store transformed coordinates in obs_trans
+      LandmarkObs LM_obs_global = LandmarkObs(); 
+      LM_obs_global.x = x_m; 
+      LM_obs_global.y = y_m; 
+      LM_obs_global.id = 0; 
+      obs_trans.push_back(LM_obs_global); 
+      // DEBUGGING
+      /*cout << "Particle " << p.id << " observes (" << obs.x << " " << obs.y 
+           << ") which corresponds to map based coordinates (" 
+           << x_m << " " << y_m << ")" << endl; */ 
+    }
+
+    // (2) ESTIMATE WHICH LANDMARKS THE PARTICLE IS SUPPOSED TO OBSERVE
+    // Define particle sensor range
+    double x_min = p.x - sensor_range; 
+    double x_max = p.x + sensor_range; 
+    double y_min = p.y - sensor_range; 
+    double y_max = p.y + sensor_range; 
+    // Cut the LMs of interest from the map (Check whether they are within particle range)
+    // and push them to the LMs_in_range vector
+    vector<LandmarkObs> LMs_in_range; 
+    for (auto LM : map_landmarks.landmark_list){
+      if (LM.x_f > x_min && LM.x_f < x_max && LM.y_f > y_min && LM.y_f < y_max){
+        LandmarkObs LM_in_range = LandmarkObs();
+        LM_in_range.x = LM.x_f; 
+        LM_in_range.y = LM.y_f; 
+        LM_in_range.id = LM.id_i;  
+        LMs_in_range.push_back(LM_in_range); 
+        //DEBUGGING
+        /*cout << "Landmark " << LM.id_i << " (" << LM.x_f << ", " << LM.y_f << ") is in range of particle " 
+             << p.id << " (" << p.x << ", " << p.y << " )" << endl; */ 
+      }
+    }
+    // DEBUGGING
+    /*cout << "Particle " << p.id << " observes " << observations.size() << " measurements and has "
+         << LMs_in_range.size() << "LMs within its range" << endl; */
+    
+    // (3) ASSOCIATE OBSERVATIONS WITH LANDMARKS 
+    dataAssociation(LMs_in_range, obs_trans); 
+
+    // (4) CALCULATE PROBABILITIES 
+  }
+  
+
 
 }
 
