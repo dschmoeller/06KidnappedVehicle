@@ -28,7 +28,7 @@ using std::endl;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Number of particles 
-  num_particles = 100;  
+  num_particles = 10000;  
 
   // Define Gaussian distribution as particle generator
   std::default_random_engine gen;
@@ -58,12 +58,13 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
                                 double velocity, double yaw_rate) {
    // For each particle, calculate Particle Movement (Based on velocity and yaw rate measurements)
+   //std::default_random_engine gen;
+   std::mt19937 gen; 
    for (auto& p : particles){
      double x_f = p.x + (velocity/yaw_rate)*(sin(p.theta + yaw_rate*delta_t) - sin(p.theta)); 
      double y_f = p.y + (velocity/yaw_rate)*(cos(p.theta) - cos(p.theta + yaw_rate*delta_t)); 
      double theta_f = p.theta + yaw_rate*delta_t;
      // Add Gaussian noise and update particle
-     std::default_random_engine gen;
      std::normal_distribution<double> dist_x(x_f, std_pos[0]);
      std::normal_distribution<double> dist_y(y_f, std_pos[1]);
      std::normal_distribution<double> dist_theta(theta_f, std_pos[2]);
@@ -72,7 +73,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
      p.theta = dist_theta(gen);
      // DEBUGGING
      /*cout << "Move particle " << p.id << " to (" << p.x << " " << p.y 
-         << " " << p.theta << ")" << endl; */ 
+         << " " << p.theta << ")" << endl;*/   
    }
 }
 
@@ -231,48 +232,47 @@ void ParticleFilter::resample() {
   std::list<int> scaled_weights;
   for (auto w : weights){
     double scaled_weight = scale_factor*w; 
-    scaled_weights.push_back(int(scaled_weight)); 
-    //DEBUG
-    //cout << "Scaled weight for particle is: " << scaled_weight << endl; 
+    scaled_weights.push_back(int(scaled_weight));  
   }
-  //DEBUG
-  /*cout << "Scaled Weights (int) are: " << endl; 
-  for (auto e : scaled_weights){
-    cout << e << endl; 
-  } */
   
   // Use discrete distrubtion  
   std::random_device rd;
   std::mt19937 gen(rd());
   std::discrete_distribution<> d(scaled_weights.begin(), scaled_weights.end());
   std::map<int, int> m;
+  vector<Particle> particles_updated; 
   for(int n=0; n<num_particles; ++n) {
-      ++m[d(gen)];
+      ++m[d(gen)];   
   }
-  //DEBUG
-  for(auto p : m) {
-    std::cout << "Sample particle " << p.first << " " << p.second << " times\n";
+  
+  int particle_index_cnt = 0; 
+  for(auto p : m) { 
+    int particle_id = p.first; 
+    int num_iterations = p.second; 
+    for (int i = 0; i < num_iterations; i++){
+      Particle p = Particle();
+      p.id = particle_index_cnt; 
+      p.x = particles[particle_id].x; 
+      p.y = particles[particle_id].y; 
+      p.theta = particles[particle_id].theta;
+      p.weight = particles[particle_id].weight;
+      particles_updated.push_back(p);  
+      particle_index_cnt++;  
+    } 
   }
-
-
-
-  // Define discrete distribution
-  /*std::random_device rd;
-  std::mt19937 gen(rd());
-  std::discrete_distribution<> d({40, 10, 10, 40});
-  std::map<int, int> m;
-  for(int n=0; n<10000; ++n) {
-      ++m[d(gen)];
-  }
-  for(auto p : m) {
-    std::cout << p.first << " generated " << p.second << " times\n";
+  // Use resampled particles as current particle set
+  particles = particles_updated;
+  /*cout << "particles vector after resampling" << endl; 
+  for (auto p : particles){
+    cout << "( " << p.x << " " << p.y << " " << p.theta << " ) " << endl; 
   }*/
 
-   // Use discreet distribution
-   // Use sample code from init function
-   // Update particles in list
-   // Update weights in list
-
+  // Update particle weights 
+  int weight_cnt = 0; 
+  for (auto p : particles){
+    weights[weight_cnt] = p.weight; 
+    weight_cnt++; 
+  }
 }
 
 void ParticleFilter::SetAssociations(Particle& particle, 
