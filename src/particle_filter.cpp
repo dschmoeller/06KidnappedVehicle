@@ -47,9 +47,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     // Add particle and weight to their respective sets
     particles.push_back(p); 
     weights.push_back(p.weight); 
-    // DEBUGGING
-    /*cout << "Create particle " << p.id << " with (" << p.x << " " << p.y 
-         << " " << p.theta << ") and weight " << p.weight << endl; */
   }
   // Set initialization flag
   is_initialized = true;  
@@ -58,22 +55,30 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
                                 double velocity, double yaw_rate) {
    // For each particle, calculate Particle Movement (Based on velocity and yaw rate measurements)
-   //std::default_random_engine gen;
    std::mt19937 gen; 
    for (auto& p : particles){
-     double x_f = p.x + (velocity/yaw_rate)*(sin(p.theta + yaw_rate*delta_t) - sin(p.theta)); 
-     double y_f = p.y + (velocity/yaw_rate)*(cos(p.theta) - cos(p.theta + yaw_rate*delta_t)); 
-     double theta_f = p.theta + yaw_rate*delta_t;
+     // Take care of division by zero
+     double x_f, y_f, theta_f;  
+     // Use linear model if yaw rate is close to zero
+     if (yaw_rate >= 0 && yaw_rate < 0.001){
+       x_f = p.x + velocity*delta_t*cos(p.theta); 
+       y_f = p.y + velocity*delta_t*sin(p.theta); 
+       theta_f = p.theta; 
+     }
+     // Use general model if yaw rate is greater than zero
+     else {
+       x_f = p.x + (velocity/yaw_rate)*(sin(p.theta + yaw_rate*delta_t) - sin(p.theta)); 
+       y_f = p.y + (velocity/yaw_rate)*(cos(p.theta) - cos(p.theta + yaw_rate*delta_t)); 
+       theta_f = p.theta + yaw_rate*delta_t;
+     }
+     
      // Add Gaussian noise and update particle
      std::normal_distribution<double> dist_x(x_f, std_pos[0]);
      std::normal_distribution<double> dist_y(y_f, std_pos[1]);
      std::normal_distribution<double> dist_theta(theta_f, std_pos[2]);
      p.x = dist_x(gen); 
      p.y = dist_y(gen); 
-     p.theta = dist_theta(gen);
-     // DEBUGGING
-     /*cout << "Move particle " << p.id << " to (" << p.x << " " << p.y 
-         << " " << p.theta << ")" << endl;*/   
+     p.theta = dist_theta(gen);   
    }
 }
 
@@ -90,10 +95,7 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
       // Check if observation has not been assigned to a LM already
       if (obs.id == 0) {
         double eucl_dist = dist(pred_LM.x, pred_LM.y, obs.x, obs.y);
-        dist_list.push_back(std::make_tuple(eucl_dist, &obs)); 
-        // DEBUGGING
-        //cout << "Distance between LM " << pred_LM.id << " (" << pred_LM.x << " " << pred_LM.y 
-        //    << ") and obsevation (" << obs.x << " " << obs.y << ") is " << eucl_dist << endl;    
+        dist_list.push_back(std::make_tuple(eucl_dist, &obs));    
       }     
     }
     // Sort the distance/error list in ascending order
@@ -102,23 +104,8 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
     if (dist_list.size() != 0){
       sort(dist_list.begin(), dist_list.end()); 
       std::get<1>(dist_list[0])->id = pred_LM.id;
-      // DEBUGGING #############################################################
-      /*cout << "Sorted List entries:" << endl;  
-      for (auto e : dist_list){
-        cout << "Observation " << std::get<1>(e)->x << " " << std::get<1>(e)->y 
-             << " --> error to LM: " << std::get<0>(e) << endl;  
-      }
-      cout << "Closest observation to LM " << pred_LM.id << " is (" 
-           << std::get<1>(dist_list[0])->x << " " << std::get<1>(dist_list[0])->y << ")" << endl; */   
-      // DEBUGGING #############################################################
     }
   }
-
-  //Debugging
-  /*cout << "Observations after Assignment" << endl; 
-  for (auto obs : observations){
-    cout << "Obervation (" << obs.x << ", " << obs.y <<") is assigned to LM " << obs.id << endl; 
-  }*/
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -138,12 +125,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       LM_obs_global.y = y_m; 
       LM_obs_global.id = 0; 
       obs_trans.push_back(LM_obs_global); 
-      // DEBUGGING
-      /*cout << "Particle " << p.id << " observes (" << obs.x << " " << obs.y 
-           << ") which corresponds to map based coordinates (" 
-           << x_m << " " << y_m << ")" << endl; */ 
     }
-
     // (2) ESTIMATE WHICH LANDMARKS THE PARTICLE IS SUPPOSED TO OBSERVE
     // Define particle sensor range
     double x_min = p.x - sensor_range; 
@@ -160,18 +142,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
         LM_in_range.y = LM.y_f; 
         LM_in_range.id = LM.id_i;  
         LMs_in_range.push_back(LM_in_range); 
-        //DEBUGGING
-        /*cout << "Landmark " << LM.id_i << " (" << LM.x_f << ", " << LM.y_f << ") is in range of particle " 
-             << p.id << " (" << p.x << ", " << p.y << " )" << endl; */ 
       }
     }
-    // DEBUGGING
-    /*cout << "Particle " << p.id << " observes " << observations.size() << " measurements and has "
-         << LMs_in_range.size() << "LMs within its range" << endl; */
-    
     // (3) ASSOCIATE OBSERVATIONS WITH LANDMARKS 
     dataAssociation(LMs_in_range, obs_trans); 
-
     // (4) CALCULATE PROBABILITIES
     //  Calculate single landmark observation probability using mulitivariate gaussian
     vector <double> LM_obs_probs; 
@@ -188,15 +162,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
         // Deal with numerical boundaries
         if (LM_obs_prob == 0){
           LM_obs_prob = 1e-10; 
-        }
-        //DEBUG
-        //cout << "LM " << assigned_LM_id << " has prob " << LM_obs_prob 
-        //     << " to be measured/observed by particle " << endl;      
+        }     
       }
       else{
         LM_obs_prob = 0; 
-        //DEBUG
-        //cout << "No landmark match at all --> 0 Probability" << endl; 
       }
       // Push single prob onto vector
       LM_obs_probs.push_back(LM_obs_prob); 
@@ -208,13 +177,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     }
     // Update particle weight
     p.weight = weight; 
-    
-    //DEBUG
-    //cout << "The probability list comprises " << LM_obs_probs.size() << " single LM probs" << endl;
-    /*if (weight > 0){
-      cout << "Particle " << p.id << " has " << weight 
-           << " chance that it would sense current obersvation" << endl;
-    }*/  
   }
 }
 
@@ -234,7 +196,6 @@ void ParticleFilter::resample() {
     double scaled_weight = scale_factor*w; 
     scaled_weights.push_back(int(scaled_weight));  
   }
-  
   // Use discrete distrubtion  
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -244,7 +205,6 @@ void ParticleFilter::resample() {
   for(int n=0; n<num_particles; ++n) {
       ++m[d(gen)];   
   }
-  
   int particle_index_cnt = 0; 
   for(auto p : m) { 
     int particle_id = p.first; 
@@ -262,11 +222,6 @@ void ParticleFilter::resample() {
   }
   // Use resampled particles as current particle set
   particles = particles_updated;
-  /*cout << "particles vector after resampling" << endl; 
-  for (auto p : particles){
-    cout << "( " << p.x << " " << p.y << " " << p.theta << " ) " << endl; 
-  }*/
-
   // Update particle weights 
   int weight_cnt = 0; 
   for (auto p : particles){
